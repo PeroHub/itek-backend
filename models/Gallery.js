@@ -1,21 +1,22 @@
+// models/Gallery.js
 const mongoose = require('mongoose');
 
 const GallerySchema = new mongoose.Schema({
     title: {
         type: String,
-        default: '' // Optional, defaults to empty string
+        default: ''
     },
     category: {
         type: String,
-        default: '' // Optional, defaults to empty string
+        default: ''
     },
     image: {
         type: String,
-        required: true // Mandatory, path to the image
+        required: true // Will now store Cloudinary URL
     },
     description: {
         type: String,
-        default: '' // Optional, defaults to empty string
+        default: ''
     },
     date: {
         type: Date,
