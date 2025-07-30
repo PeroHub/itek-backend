@@ -1,17 +1,13 @@
+// routes/gallery.js
 const express = require('express');
 const router = express.Router();
 const galleryController = require('../controllers/galleryController');
 const authMiddleware = require('../middleware/auth');
 const multer = require('multer');
-const path = require('path');
+// const path = require('path'); // No longer needed for local paths
 
-// Set up multer for file uploads
-const storage = multer.diskStorage({
-    destination: './public/uploads/', // Images will be saved here
-    filename: function(req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
-    }
-});
+// Set up multer for file uploads - use memoryStorage
+const storage = multer.memoryStorage(); // Store file in memory (buffer)
 
 const upload = multer({
     storage: storage,
@@ -26,7 +22,7 @@ function checkFileType(file, cb) {
     // Allowed ext
     const filetypes = /jpeg|jpg|png|gif/;
     // Check ext
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = filetypes.test(file.originalname.toLowerCase()); // Use file.originalname
     // Check mime
     const mimetype = filetypes.test(file.mimetype);
 
@@ -49,6 +45,7 @@ router.get('/', galleryController.getGalleryItems);
 router.post('/', authMiddleware, (req, res) => {
     upload(req, res, (err) => {
         if (err) {
+            console.error("Multer upload error:", err);
             return res.status(400).json({ msg: err });
         }
         galleryController.addGalleryItem(req, res);
@@ -61,6 +58,7 @@ router.post('/', authMiddleware, (req, res) => {
 router.put('/:id', authMiddleware, (req, res) => {
     upload(req, res, (err) => {
         if (err) {
+            console.error("Multer upload error:", err);
             return res.status(400).json({ msg: err });
         }
         galleryController.updateGalleryItem(req, res);

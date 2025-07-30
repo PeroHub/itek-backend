@@ -1,28 +1,24 @@
+// server.js
 const express = require('express');
 const connectDB = require('./config/db');
 const dotenv = require('dotenv');
-const path = require('path');
-const cors = require('cors'); // Import cors
+// const path = require('path'); // No longer needed for local uploads
+const cors = require('cors');
 
-dotenv.config(); // Load environment variables
+dotenv.config();
 
 const app = express();
 
-// Connect Database
 connectDB();
 
-// Init Middleware
-app.use(express.json({ extended: false })); // Allows us to get data in req.body
-app.use(cors()); // Enable CORS for all routes
+app.use(express.json({ extended: false }));
+app.use(cors());
 
-// Serve static files (uploaded images)
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+// REMOVE THIS LINE: app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
-// Define Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/gallery', require('./routes/gallery'));
 
-// Basic route for testing
 app.get('/', (req, res) => res.send('Gallery API is running'));
 
 const PORT = process.env.PORT || 5000;
