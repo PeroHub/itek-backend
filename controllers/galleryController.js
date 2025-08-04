@@ -1,29 +1,18 @@
 // controllers/galleryController.js
 const Gallery = require('../models/Gallery');
-const cloudinary = require('../config/cloudinary'); // Import Cloudinary config
-// const path = require('path'); // No longer needed
-// const fs = require('fs');     // No longer needed
+const cloudinary = require('../config/cloudinary');
 
 // Helper function to extract public ID from Cloudinary URL
-const getPublicIdFromUrl = (url) => {
+const getPublicIdFromUrl = (url, resourceType) => {
     if (!url) return null;
-    const parts = url.split('/');
-    const filename = parts[parts.length - 1];
-    const publicIdWithExtension = filename.split('.')[0];
-    // Cloudinary URLs often include a folder structure, e.g., 'my_folder/image_name.jpg'
-    // We need to capture that as well.
-    // Example: https://res.cloudinary.com/cloud_name/image/upload/v1678888888/folder/public_id.jpg
-    const publicIdMatch = url.match(/\/v\d+\/(.+)\.\w+$/);
-    if (publicIdMatch && publicIdMatch[1]) {
-        return publicIdMatch[1];
+    const regex = new RegExp(`v\\d+\/(.+)\\.${resourceType === 'video' ? '(mp4|mov|avi|flv|webm)' : '(jpg|jpeg|png|gif)'}`);
+    const match = url.match(regex);
+    if (match && match[1]) {
+        return match[1];
     }
-    return publicIdWithExtension; // Fallback for simpler URLs
+    return null; // Return null if public ID cannot be extracted
 };
 
-
-// @route   GET /api/gallery
-// @desc    Get all gallery items
-// @access  Public
 exports.getGalleryItems = async (req, res) => {
     try {
         const galleryItems = await Gallery.find().sort({ date: -1 });
@@ -34,28 +23,23 @@ exports.getGalleryItems = async (req, res) => {
     }
 };
 
-// @route   POST /api/gallery
-// @desc    Add a new gallery item
-// @access  Private (Admin only)
+
 exports.addGalleryItem = async (req, res) => {
+    // The frontend now sends the Cloudinary URL directly in the request body
+    const { title, category, description, image, mediaType } = req.body;
+    console.log("Adding gallery item with data:", { title, category, description, image, mediaType });
+    // Basic validation to ensure all required fields are present
+    if (!image || !mediaType) {
+        return res.status(400).json({ msg: 'Image URL and media type are required.' });
+    }
+
     try {
-        if (!req.file) {
-            return res.status(400).json({ msg: 'No image uploaded' });
-        }
-
-        const { title = '', category = '', description = '' } = req.body;
-
-        // Upload image to Cloudinary
-        const result = await cloudinary.uploader.upload(req.file.path || `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
-            folder: 'gallery_images', // Optional: specify a folder in Cloudinary
-            resource_type: 'image' // Ensure it's treated as an image
-        });
-
         const newGalleryItem = new Gallery({
-            title,
-            category,
-            image: result.secure_url, // Store the Cloudinary URL
-            description
+            title: title || '',
+            category: category || '',
+            description: description || '',
+            image, 
+            mediaType,
         });
 
         const galleryItem = await newGalleryItem.save();
@@ -67,45 +51,36 @@ exports.addGalleryItem = async (req, res) => {
     }
 };
 
-// @route   PUT /api/gallery/:id
-// @desc    Update a gallery item
-// @access  Private (Admin only)
-exports.updateGalleryItem = async (req, res) => {
-    const { title = '', category = '', description = '' } = req.body;
-    let newImageUrl = '';
 
+exports.updateGalleryItem = async (req, res) => {
+    const { title, category, description, image, mediaType } = req.body;
+    
     try {
         let galleryItem = await Gallery.findById(req.params.id);
 
         if (!galleryItem) {
             return res.status(404).json({ msg: 'Gallery item not found' });
         }
-
-        // If a new image is uploaded
-        if (req.file) {
-            // Delete old image from Cloudinary if it exists
+        
+        // Check if a new image URL was sent (meaning a new file was uploaded on the frontend)
+        if (image && image !== galleryItem.image) {
+            // A new file was uploaded, so delete the old one from Cloudinary
             if (galleryItem.image) {
-                const publicId = getPublicIdFromUrl(galleryItem.image);
+                const publicId = getPublicIdFromUrl(galleryItem.image, galleryItem.mediaType);
                 if (publicId) {
-                    await cloudinary.uploader.destroy(publicId);
-                    console.log(`Cloudinary: Deleted old image with public ID: ${publicId}`);
+                    // Use resource_type to correctly target the asset
+                    await cloudinary.uploader.destroy(publicId, { resource_type: galleryItem.mediaType });
+                    console.log(`Cloudinary: Deleted old media with public ID: ${publicId}`);
                 }
             }
-
-            // Upload new image to Cloudinary
-            const result = await cloudinary.uploader.upload(req.file.path || `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
-                folder: 'gallery_images',
-                resource_type: 'image'
-            });
-            newImageUrl = result.secure_url;
-        } else {
-            newImageUrl = galleryItem.image; // Keep the old image if no new one is uploaded
+            galleryItem.image = image; // Update to the new URL
+            galleryItem.mediaType = mediaType; // Update to the new media type
         }
 
-        galleryItem.title = title;
-        galleryItem.category = category;
-        galleryItem.description = description;
-        galleryItem.image = newImageUrl; // Update with new or old URL
+        // Update other fields
+        galleryItem.title = title || '';
+        galleryItem.category = category || '';
+        galleryItem.description = description || '';
 
         await galleryItem.save();
         res.json({ msg: 'Gallery item updated successfully', galleryItem });
@@ -116,9 +91,7 @@ exports.updateGalleryItem = async (req, res) => {
     }
 };
 
-// @route   DELETE /api/gallery/:id
-// @desc    Delete a gallery item
-// @access  Private (Admin only)
+
 exports.deleteGalleryItem = async (req, res) => {
     try {
         const galleryItem = await Gallery.findById(req.params.id);
@@ -127,16 +100,17 @@ exports.deleteGalleryItem = async (req, res) => {
             return res.status(404).json({ msg: 'Gallery item not found' });
         }
 
-        // Delete image from Cloudinary
+        // Delete media from Cloudinary
         if (galleryItem.image) {
-            const publicId = getPublicIdFromUrl(galleryItem.image);
+            const publicId = getPublicIdFromUrl(galleryItem.image, galleryItem.mediaType);
             if (publicId) {
-                await cloudinary.uploader.destroy(publicId);
-                console.log(`Cloudinary: Deleted image with public ID: ${publicId}`);
+                // Use resource_type to correctly target the asset
+                await cloudinary.uploader.destroy(publicId, { resource_type: galleryItem.mediaType });
+                console.log(`Cloudinary: Deleted media with public ID: ${publicId}`);
             }
         }
 
-        await Gallery.deleteOne({ _id: galleryItem._id }); // Use galleryItem._id for clarity
+        await Gallery.deleteOne({ _id: galleryItem._id });
 
         res.json({ msg: 'Gallery item removed' });
     } catch (err) {
