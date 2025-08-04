@@ -12,7 +12,12 @@ const GallerySchema = new mongoose.Schema({
     },
     image: {
         type: String,
-        required: true // Will now store Cloudinary URL
+        required: true // This will store the Cloudinary URL
+    },
+    mediaType: {
+        type: String,
+        enum: ['image', 'video'], // Added to differentiate between images and videos
+        required: true
     },
     description: {
         type: String,
